@@ -6,13 +6,15 @@ const EventEmitter = require('events');
 const urlLib = require('url');
 const crypto = require('crypto');
 const { Readable } = require('stream');
-const normalizeUrl = require('normalize-url');
+//const normalizeUrl = require('normalize-url');
 const getStream = require('get-stream');
 const CachePolicy = require('http-cache-semantics');
 const Response = require('responselike');
 const lowercaseKeys = require('lowercase-keys');
 const cloneResponse = require('clone-response');
 const Keyv = require('keyv');
+const { resolve } = require('path');
+const normalize = require('./normalize')
 
 class CacheableRequest {
 	constructor(request, cacheAdapter) {
@@ -34,7 +36,7 @@ class CacheableRequest {
 	}
 
 	createCacheableRequest(request) {
-		return (options, cb) => {
+		return async (options, cb) => {
 			let url;
 			if (typeof options === 'string') {
 				url = normalizeUrlObject(urlLib.parse(options));
@@ -63,15 +65,27 @@ class CacheableRequest {
 
 			const ee = new EventEmitter();
 
-			const normalizedUrlString = normalizeUrl(
-				urlLib.format(url),
-				{
+
+			let a = undefined;
+			let mod = undefined;
+			mod = await normalize('http://user:pass@localhost/', {
 					stripWWW: false,
 					removeTrailingSlash: false,
 					stripAuthentication: false,
-				},
-			);
-			let key = `${options.method}:${normalizedUrlString}`;
+				},);
+
+			console.log(mod);
+
+			// const normalizedUrlString = normalizeUrl(
+			// 	urlLib.format(url),
+			// 	{
+			// 		stripWWW: false,
+			// 		removeTrailingSlash: false,
+			// 		stripAuthentication: false,
+			// 	},
+			// );
+
+			let key = `${options.method}:${"normalizedUrlString"}`;
 
 			// POST, PATCH, and PUT requests may be cached, depending on the response
 			// cache-control headers. As a result, the body of the request should be

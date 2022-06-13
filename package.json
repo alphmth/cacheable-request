@@ -7,10 +7,10 @@
 	"author": "Jared Wray <me@jaredwray.com> (http://jaredwray.com)",
 	"main": "src/index.js",
 	"engines": {
-		"node": ">=12"
+		"node": ">=14"
 	},
 	"scripts": {
-		"test": "xo && nyc ava",
+		"test": "nyc ava",
 		"coverage": "nyc report --reporter=text-lcov > coverage.lcov",
 		"clean": "rm -rf node_modules && rm -rf .nyc_output && rm -rf coverage.lcov && rm -rf ./test/testdb.sqlite"
 	},
@@ -35,7 +35,7 @@
 		"http-cache-semantics": "^4.1.0",
 		"keyv": "^4.3.0",
 		"lowercase-keys": "^2.0.0",
-		"normalize-url": "^6.0.1",
+		"normalize-url": "^7.0.1",
 		"responselike": "^2.0.0"
 	},
 	"devDependencies": {
