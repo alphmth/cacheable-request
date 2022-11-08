@@ -84,6 +84,8 @@ class CacheableRequest {
 			}
 		}
 
+		// Console.log('key for ' + options.method, key);
+
 		let revalidate: any = false;
 		let madeRequest = false;
 		const makeRequest = (options_: any) => {
@@ -99,30 +101,39 @@ class CacheableRequest {
 					}
 				};
 			});
+			const revalidatePolicy = async (revalidate: any, response: any) => {
+				const revalidatedPolicy = CachePolicy.fromObject(revalidate.cachePolicy).revalidatedPolicy(options_, response);
+				// Console.log('revalidatedPolicy', revalidatedPolicy.modified);
+				if (!revalidatedPolicy.modified) {
+					response.resume();
+					await new Promise(resolve => {
+						// Skipping 'error' handler cause 'error' event should't be emitted for 304 response
+						// console.log('end');
+						response
+							.once('end', resolve);
+					});
+					const headers = convertHeaders(revalidatedPolicy.policy.responseHeaders());
+					response = new Response({statusCode: revalidate.statusCode, headers, body: revalidate.body, url: revalidate.url});
+					response.cachePolicy = revalidatedPolicy.policy;
+					response.fromCache = true;
+				}
+			};
+
 			const handler = async (response: any) => {
 				if (revalidate) {
 					response.status = response.statusCode;
-					const revalidatedPolicy = CachePolicy.fromObject(revalidate.cachePolicy).revalidatedPolicy(options_, response);
-					if (!revalidatedPolicy.modified) {
-						response.resume();
-						await new Promise(resolve => {
-							// Skipping 'error' handler cause 'error' event should't be emitted for 304 response
-							response
-								.once('end', resolve);
-						});
-						const headers = convertHeaders(revalidatedPolicy.policy.responseHeaders());
-						response = new Response({statusCode: revalidate.statusCode, headers, body: revalidate.body, url: revalidate.url});
-						response.cachePolicy = revalidatedPolicy.policy;
-						response.fromCache = true;
-					}
+
+					await revalidatePolicy(revalidate, response);
 				}
 
+				// Console.log('response.fromCache', response.fromCache);
 				if (!response.fromCache) {
 					response.cachePolicy = new CachePolicy(options_, response, options_);
 					response.fromCache = false;
 				}
 
 				let clonedResponse;
+				// Console.log('response.cachePolicy.storable()', response.cachePolicy.storable());
 				if (options_.cache && response.cachePolicy.storable()) {
 					clonedResponse = cloneResponse(response);
 					(async () => {
@@ -145,6 +156,20 @@ class CacheableRequest {
 								ttl = ttl ? Math.min(ttl, options_.maxTtl) : options_.maxTtl;
 							}
 
+							// Console.log('response.cachePolicy.storable()');
+							if (this.hooks.get(onIsCacheable)) {
+								value = await this.runHook(onIsCacheable, value, response.headers);
+								this.hooks.delete(onIsCacheable);
+								// Console.log('revalidated modified response', revalidate);
+								const revalidatedPolicy = revalidate ? CachePolicy.fromObject(revalidate.cachePolicy).revalidatedPolicy(options_, response) : response.cachePolicy;
+								// Le.log('revalidated modified', revalidatedPolicy);
+								if (revalidatedPolicy.modified) {
+									const headers = convertHeaders(revalidatedPolicy.policy.responseHeaders());
+									response = new Response({statusCode: revalidate.statusCode, headers, body: revalidate.body, url: revalidate.url});
+									response.cachePolicy = revalidatedPolicy.policy;
+								}
+							}
+
 							if (this.hooks.size > 0) {
 								/* eslint-disable no-await-in-loop */
 								for (const key_ of this.hooks.keys()) {
@@ -153,7 +178,10 @@ class CacheableRequest {
 								/* eslint-enable no-await-in-loop */
 							}
 
-							await this.cache.set(key, value, ttl);
+							// Console.log('hey', value.shouldNotCache);
+							if (!value.shouldNotCache) {
+								await this.cache.set(key, value, ttl);
+							}
 						} catch (error: any) {
 							ee.emit('error', new CacheError(error));
 						}
@@ -167,6 +195,12 @@ class CacheableRequest {
 						}
 					})();
 				}
+
+				// If (response) {
+				// 	console.log('sending new response:');
+				// } else {
+				// 	console.log('sending cloned response:');
+				// }
 
 				ee.emit('response', clonedResponse ?? response);
 				if (typeof cb === 'function') {
@@ -190,13 +224,15 @@ class CacheableRequest {
 				await Promise.resolve();
 				const cacheEntry = options_.cache ? await this.cache.get(key) : undefined;
 
-				if (typeof cacheEntry === 'undefined' && !options_.forceRefresh) {
+				// Console.log(cacheEntry);
+				if (cacheEntry === undefined && !options_.forceRefresh) {
 					makeRequest(options_);
 					return;
 				}
 
 				const policy = CachePolicy.fromObject(cacheEntry.cachePolicy);
 				if (policy.satisfiesWithoutRevalidation(options_) && !options_.forceRefresh) {
+					// Console.log(options_);
 					const headers = convertHeaders(policy.responseHeaders());
 					const response: any = new Response({statusCode: cacheEntry.statusCode, headers, body: cacheEntry.body, url: cacheEntry.url});
 					response.cachePolicy = policy;
@@ -296,3 +332,4 @@ const convertHeaders = (headers: CachePolicy.Headers) => {
 export default CacheableRequest;
 export * from './types.js';
 export const onResponse = 'onResponse';
+export const onIsCacheable = 'onIsCacheable';

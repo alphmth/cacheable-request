@@ -7,7 +7,7 @@ import createTestServer from 'create-test-server';
 import delay from 'delay';
 import sqlite3 from 'sqlite3';
 import Keyv from 'keyv';
-import CacheableRequest, {CacheValue, onResponse} from '../src/index.js';
+import CacheableRequest, {CacheValue, onResponse, onIsCacheable, CacheHeaders} from '../src/index.js';
 
 // Promisify cacheableRequest
 const promisify = (cacheableRequest: any) => async (options: any) => new Promise((resolve, reject) => {
@@ -705,4 +705,37 @@ test('socket within keepAlive Agent has been free\'d after cache revalidation', 
 	} finally {
 		agent.destroy();
 	}
+});
+
+test('onIsCacheable should not cached response', async () => {
+	const endpoint = '/compress';
+	const cache = new Map();
+	const cacheableRequest = new CacheableRequest(request, cache);
+	cacheableRequest.addHook(onIsCacheable, async (value: CacheValue, headers: CacheHeaders) => {
+		value.shouldNotCache = true;
+		return value;
+	});
+	const cacheableRequestHelper = promisify(cacheableRequest.request());
+	const response: any = await cacheableRequestHelper(s.url + endpoint);
+	expect(response.statusCode).toBe(200);
+	expect(cache.size).toBe(0);
+});
+
+test('onIsCacheable should have changed cached response headers', async () => {
+	const endpoint = '/compress';
+	const cache = new Map();
+	const cacheableRequest = new CacheableRequest(request, cache);
+	cacheableRequest.addHook(onIsCacheable, async (value: CacheValue, headers: CacheHeaders) => {
+		const newHeaders = {
+			'Cache-Control': 'public, max-age=0.05',
+		};
+
+		Object.assign(headers, newHeaders);
+		value.headers = headers;
+		return value;
+	});
+	const cacheableRequestHelper = promisify(cacheableRequest.request());
+	const response: any = await cacheableRequestHelper(s.url + endpoint);
+	expect(response.statusCode).toBe(200);
+	expect(cache.size).toBe(1);
 });

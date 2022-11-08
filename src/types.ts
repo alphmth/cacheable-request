@@ -67,7 +67,7 @@ export interface Options {
 
 	url?: string | undefined;
 
-	headers?: Record<string, string | string[] | undefined>;
+	headers?: CacheHeaders;
 
 	body?: Buffer;
 }
@@ -77,7 +77,11 @@ export interface CacheValue extends Record<string, any> {
 	statusCode: number;
 	body: Buffer | string;
 	cachePolicy: CachePolicyObject;
+	shouldNotCache?: boolean;
+	headers?: CacheHeaders;
 }
+
+export type CacheHeaders = Record<string, string | string[] | undefined>;
 
 export interface Emitter extends EventEmitter {
 	addListener(event: 'request', listener: (request: ClientRequest) => void): this;
