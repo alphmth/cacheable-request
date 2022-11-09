@@ -770,7 +770,6 @@ test('onIsCacheable should have updated cached response', async () => {
 	expect(response.statusCode).toBe(200);
 	expect(cache.size).toBe(1);
 
-	console.log('adding hooks');
 	cacheableRequest.addHook(onIsCacheable, async (value: CacheValue, headers: CacheHeaders) => {
 		const newHeaders = {
 			'cache-control': 'public, max-age=0.05',
