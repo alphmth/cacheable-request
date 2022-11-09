@@ -164,7 +164,7 @@ beforeAll(async () => {
 			response.end();
 		} else {
 			response.setHeader('content-encoding', 'gzip');
-			response.setHeader('cache-control', 'public, max-age: 60');
+			response.setHeader('cache-control', 'public, max-age=60');
 			response.setHeader('etag', 'foobar');
 			response.end(compressed);
 		}
@@ -755,6 +755,39 @@ test('onIsCacheable should have changed cached response headers', async () => {
 	});
 	const cacheableRequestHelper = promisify(cacheableRequest.request());
 	const response: any = await cacheableRequestHelper(s.url + endpoint);
+	expect(response.headers['cache-control']).toBe('public, max-age=0.05');
+	expect(response.statusCode).toBe(200);
+	expect(cache.size).toBe(1);
+});
+
+test('onIsCacheable should have updated cached response', async () => {
+	const endpoint = '/compress';
+	const cache = new Map();
+	const cacheableRequest = new CacheableRequest(request, cache);
+	let cacheableRequestHelper = promisify(cacheableRequest.request());
+	let response: any = await cacheableRequestHelper(s.url + endpoint);
+	expect(response.headers['cache-control']).toBe('public, max-age=60');
+	expect(response.statusCode).toBe(200);
+	expect(cache.size).toBe(1);
+
+	console.log('adding hooks');
+	cacheableRequest.addHook(onIsCacheable, async (value: CacheValue, headers: CacheHeaders) => {
+		const newHeaders = {
+			'cache-control': 'public, max-age=0.05',
+		};
+
+		Object.assign(headers, newHeaders);
+		value.headers = headers;
+		return value;
+	});
+	cacheableRequestHelper = promisify(cacheableRequest.request());
+	response = await cacheableRequestHelper(s.url + endpoint);
+	expect(response.headers['cache-control']).toBe('public, max-age=0.05');
+	expect(response.statusCode).toBe(200);
+	expect(cache.size).toBe(1);
+
+	cacheableRequestHelper = promisify(cacheableRequest.request());
+	response = await cacheableRequestHelper(s.url + endpoint);
 	expect(response.headers['cache-control']).toBe('public, max-age=0.05');
 	expect(response.statusCode).toBe(200);
 	expect(cache.size).toBe(1);

@@ -141,10 +141,6 @@ class CacheableRequest {
 								body,
 								cachePolicy: response.cachePolicy.toObject(),
 							};
-							let ttl = options_.strictTtl ? response.cachePolicy.timeToLive() : undefined;
-							if (options_.maxTtl) {
-								ttl = ttl ? Math.min(ttl, options_.maxTtl) : options_.maxTtl;
-							}
 
 							if (this.hooks.get(onIsCacheable)) {
 								value = await this.runHook(onIsCacheable, value, response.headers);
@@ -152,7 +148,7 @@ class CacheableRequest {
 								response.headers = value.headers ?? response.headers;
 								delete value.headers;
 								const policy = CachePolicy.fromObject(revalidate ? revalidate.cachePolicy : response.cachePolicy.toObject()).revalidatedPolicy(options_, response);
-								if (!policy?.modified) {
+								if (!policy.modified) {
 									const headers = convertHeaders(policy.policy.responseHeaders());
 									response = new Response({statusCode: revalidate.statusCode ?? response.statusCode, headers, body: revalidate.body ?? body, url: revalidate.url ?? response.url});
 									response.cachePolicy = policy.policy;
@@ -167,10 +163,7 @@ class CacheableRequest {
 								/* eslint-enable no-await-in-loop */
 							}
 
-							if (!value.shouldNotCache) {
-								delete value.shouldNotCache;
-								await this.cache.set(key, value, ttl);
-							}
+							await this.saveCache(response.cachePolicy, key, value, options_);
 						} catch (error: any) {
 							ee.emit('error', new CacheError(error));
 						}
@@ -205,22 +198,39 @@ class CacheableRequest {
 		(async () => {
 			const get = async (options_: any) => {
 				await Promise.resolve();
-				const cacheEntry = options_.cache ? await this.cache.get(key) : undefined;
+				let cacheEntry = options_.cache ? await this.cache.get(key) : undefined;
 
 				if (cacheEntry === undefined && !options_.forceRefresh) {
 					makeRequest(options_);
 					return;
 				}
 
-				const policy = CachePolicy.fromObject(cacheEntry.cachePolicy);
+				let policy = CachePolicy.fromObject(cacheEntry.cachePolicy);
+
 				if (policy.satisfiesWithoutRevalidation(options_) && !options_.forceRefresh) {
-					const headers = convertHeaders(policy.responseHeaders());
-					const response: any = new Response({statusCode: cacheEntry.statusCode, headers, body: cacheEntry.body, url: cacheEntry.url});
-					response.cachePolicy = policy;
-					response.fromCache = true;
-					ee.emit('response', response);
-					if (typeof cb === 'function') {
-						cb(response);
+					let headers = [];
+					if (this.hooks.get(onIsCacheable)) {
+						cacheEntry = await this.runHook(onIsCacheable, cacheEntry, policy.responseHeaders());
+						policy = cacheEntry.policy;
+						headers = convertHeaders(cacheEntry.headers);
+
+						const response: any = new Response({statusCode: cacheEntry.statusCode, headers, body: cacheEntry.body, url: cacheEntry.url});
+						response.cachePolicy = policy;
+						response.fromCache = true;
+						ee.emit('response', response);
+						await this.saveCache(response.cachePolicy, key, cacheEntry, options_);
+						if (typeof cb === 'function') {
+							cb(response);
+						}
+					} else {
+						headers = convertHeaders(policy.responseHeaders());
+						const response: any = new Response({statusCode: cacheEntry.statusCode, headers, body: cacheEntry.body, url: cacheEntry.url});
+						response.cachePolicy = policy;
+						response.fromCache = true;
+						ee.emit('response', response);
+						if (typeof cb === 'function') {
+							cb(response);
+						}
 					}
 				} else if (policy.satisfiesWithoutRevalidation(options_) && Date.now() >= policy.timeToLive() && options_.forceRefresh) {
 					await this.cache.delete(key);
@@ -253,6 +263,18 @@ class CacheableRequest {
 
 		return ee;
 	};
+
+	async saveCache(cachePolicy: CachePolicy, key: string, value: CacheValue, options_: any) {
+		let ttl = options_.strictTtl ? cachePolicy.timeToLive() : undefined;
+		if (options_.maxTtl) {
+			ttl = ttl ? Math.min(ttl, options_.maxTtl) : options_.maxTtl;
+		}
+
+		if (!value.shouldNotCache) {
+			delete value.shouldNotCache;
+			await this.cache.set(key, value, ttl);
+		}
+	}
 
 	addHook = (name: string, fn: Func) => {
 		if (!this.hooks.has(name)) {
