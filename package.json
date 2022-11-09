@@ -104,7 +104,7 @@
 			"@typescript-eslint/no-implicit-any-catch": 0,
 			"@typescript-eslint/consistent-type-imports": 0,
 			"@typescript-eslint/consistent-type-definitions": 0,
-			"node/prefer-global/url":0
+			"n/prefer-global/url":0
 		}
 	}
 }
